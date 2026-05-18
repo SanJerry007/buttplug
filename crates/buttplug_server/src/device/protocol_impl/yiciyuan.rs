@@ -42,9 +42,12 @@ use crate::device::{
 
 const YICIYUAN_PROTOCOL_UUID: Uuid = uuid!("d5987116-2fba-4c30-a7aa-ef567a3bf35d");
 
-// Device firmware accepts axes in the range 0..=0x14 (20). Buttplug v4 hands
-// us 0..=100 per the YAML range; map by dividing by 5.
-const DEVICE_MAX: u8 = 0x14;
+// Stroke range cap. FJB-01 / FJB-02 / YS-TD-0x clamp to 0..=20; FJB-03 doubles
+// it to 0..=40 (per app source: `A ? t>40&&(t=40) : t>20&&(t=20)`).
+const STROKE_MAX_DEFAULT: u8 = 0x14;
+const STROKE_MAX_FJB03: u8 = 0x28;
+// Vibe and axis_c are always clamped to 0..=20 regardless of model.
+const VIBE_AXIS_MAX: u8 = 0x14;
 
 // Output feature indices, matching the YAML order under `defaults.features`.
 const FEATURE_STROKE: u32 = 0;
@@ -60,18 +63,27 @@ pub struct YiciyuanInitializer {}
 impl ProtocolInitializer for YiciyuanInitializer {
   async fn initialize(
     &mut self,
-    _hardware: Arc<Hardware>,
+    hardware: Arc<Hardware>,
     _def: &ServerDeviceDefinition,
   ) -> Result<Arc<dyn ProtocolHandler>, ButtplugDeviceError> {
-    Ok(Arc::new(Yiciyuan::default()))
+    // FJB-03 is the only model in the family with a model-specific code path
+    // in the official app: 6-byte frame with a 1-byte modular checksum and a
+    // doubled stroke range. Detect it once at init by the advertised name.
+    let is_fjb03 = hardware.name() == "YCY-FJB-03";
+    Ok(Arc::new(Yiciyuan {
+      is_fjb03,
+      stroke: AtomicU8::new(0),
+      vibe: AtomicU8::new(0),
+      axis_c: AtomicU8::new(0),
+    }))
   }
 }
 
 /// Per-device state. The protocol sends all three axes in every packet, so
 /// we keep the last commanded value for each axis here and rebuild the
 /// packet on any axis change.
-#[derive(Default)]
 pub struct Yiciyuan {
+  is_fjb03: bool,
   stroke: AtomicU8,
   vibe: AtomicU8,
   axis_c: AtomicU8,
@@ -79,33 +91,63 @@ pub struct Yiciyuan {
 
 impl Yiciyuan {
   fn store(&self, feature_index: u32, value: u32) -> Result<(), ButtplugDeviceError> {
-    // Map 0..=100 -> 0..=20 (DEVICE_MAX). Round half-up.
-    let level = ((value.min(100) as u16 * DEVICE_MAX as u16 + 50) / 100) as u8;
-    match feature_index {
-      FEATURE_STROKE => self.stroke.store(level, Ordering::Relaxed),
-      FEATURE_VIBE => self.vibe.store(level, Ordering::Relaxed),
-      FEATURE_AXIS_C => self.axis_c.store(level, Ordering::Relaxed),
+    let v = value.min(100) as u16;
+    let level = match feature_index {
+      FEATURE_STROKE => {
+        let cap = if self.is_fjb03 {
+          STROKE_MAX_FJB03
+        } else {
+          STROKE_MAX_DEFAULT
+        };
+        ((v * cap as u16 + 50) / 100) as u8
+      }
+      FEATURE_VIBE | FEATURE_AXIS_C => ((v * VIBE_AXIS_MAX as u16 + 50) / 100) as u8,
       _ => {
         return Err(ButtplugDeviceError::ProtocolSpecificError(
           "Yiciyuan".to_owned(),
           format!("Unknown feature index {}", feature_index),
         ));
       }
+    };
+    match feature_index {
+      FEATURE_STROKE => self.stroke.store(level, Ordering::Relaxed),
+      FEATURE_VIBE => self.vibe.store(level, Ordering::Relaxed),
+      FEATURE_AXIS_C => self.axis_c.store(level, Ordering::Relaxed),
+      _ => unreachable!(),
     }
     Ok(())
   }
 
   fn build_packet(&self) -> Vec<u8> {
-    // 16-byte motor-state frame:
-    //   [0]=0x35 vendor magic, [1]=0x12 "set motor levels" sub-command,
-    //   [2]=stroke, [3]=vibe, [4]=axis_c, [5..16]=reserved (zero).
-    let mut packet = vec![0u8; 16];
-    packet[0] = 0x35;
-    packet[1] = 0x12;
-    packet[2] = self.stroke.load(Ordering::Relaxed);
-    packet[3] = self.vibe.load(Ordering::Relaxed);
-    packet[4] = self.axis_c.load(Ordering::Relaxed);
-    packet
+    let stroke = self.stroke.load(Ordering::Relaxed);
+    let vibe = self.vibe.load(Ordering::Relaxed);
+    let axis_c = self.axis_c.load(Ordering::Relaxed);
+    if self.is_fjb03 {
+      // FJB-03: 6-byte frame
+      //   [0]=0x35, [1]=0x12, [2]=stroke, [3]=vibe, [4]=axis_c, [5]=checksum.
+      // Checksum is the low byte of the sum of bytes 0..5 (per the JS
+      // `_checksum` helper in mixins/pump.js, which sums every 2-hex-char
+      // byte mod 256).
+      let body = [0x35u8, 0x12, stroke, vibe, axis_c];
+      let checksum = body.iter().fold(0u16, |acc, b| acc + *b as u16) as u8;
+      let mut packet = Vec::with_capacity(6);
+      packet.extend_from_slice(&body);
+      packet.push(checksum);
+      packet
+    } else {
+      // FJB-01 / FJB-02 / YS-TD-0x: 16-byte zero-padded frame.
+      //   [0]=0x35, [1]=0x12, [2]=stroke, [3]=vibe, [4]=axis_c, [5..16]=0.
+      // Firmware accepts shorter writes but with quirky behaviour (axes left
+      // unset hold their previous value); the official app pads to 16 bytes
+      // via `(i+Array(32).join("0")).slice(0,32)` in mixins/os_base.js.
+      let mut packet = vec![0u8; 16];
+      packet[0] = 0x35;
+      packet[1] = 0x12;
+      packet[2] = stroke;
+      packet[3] = vibe;
+      packet[4] = axis_c;
+      packet
+    }
   }
 
   fn handle_axis_cmd(

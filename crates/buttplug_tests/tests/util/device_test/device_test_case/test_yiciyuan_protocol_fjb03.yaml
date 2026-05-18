@@ -1,0 +1,89 @@
+devices:
+  - identifier:
+      name: "YCY-FJB-03"
+    expected_name: "Yiciyuan FJB-03"
+device_commands:
+  # FJB-03 sends a 6-byte frame: [0x35, 0x12, stroke, vibe, axis_c, checksum]
+  # — distinct from the 16-byte zero-padded frame used by the other models
+  # in this protocol. Stroke range is doubled to 0..=0x28 (40) while
+  # vibe and axis_c remain at 0..=0x14 (20).
+  - !VersionGated
+      min_spec_version: 3
+      commands:
+        # Initial Stop after connect.
+        # Sum check: 0x35 + 0x12 + 0 + 0 + 0 = 0x47.
+        - !Messages
+            device_index: 0
+            messages:
+              - !Stop
+        - !Commands
+            device_index: 0
+            commands:
+              - !Write
+                  endpoint: tx
+                  data: [0x35, 0x12, 0x00, 0x00, 0x00, 0x47]
+                  write_with_response: false
+
+        # Scalar: stroke 0.5 / vibe 0.75 / axis_c 0.25.
+        # Stroke @ 0.5 of doubled range: 50 * 40 / 100 = 20 = 0x14.
+        # Vibe   @ 0.75 of 0..20: 75 * 20 / 100 = 15 = 0x0F.
+        # Axis_c @ 0.25 of 0..20: 25 * 20 / 100 = 5  = 0x05.
+        # Sum:   0x35 + 0x12 + 0x14 + 0x0F + 0x05 = 0x6F.
+        - !Messages
+            device_index: 0
+            messages:
+              - !Scalar
+                - Index: 0
+                  Scalar: 0.5
+                  ActuatorType: Oscillate
+                - Index: 1
+                  Scalar: 0.75
+                  ActuatorType: Vibrate
+                - Index: 2
+                  Scalar: 0.25
+                  ActuatorType: Vibrate
+        - !Commands
+            device_index: 0
+            commands:
+              - !Write
+                  endpoint: tx
+                  data: [0x35, 0x12, 0x14, 0x0F, 0x05, 0x6F]
+                  write_with_response: false
+
+        # Max stroke (1.0) demonstrates the doubled FJB-03 range:
+        # 100 * 40 / 100 = 40 = 0x28.
+        # Vibe and axis_c remain capped at 0..20: 100 * 20 / 100 = 20 = 0x14.
+        # Sum: 0x35 + 0x12 + 0x28 + 0x14 + 0x14 = 0x97.
+        - !Messages
+            device_index: 0
+            messages:
+              - !Scalar
+                - Index: 0
+                  Scalar: 1.0
+                  ActuatorType: Oscillate
+                - Index: 1
+                  Scalar: 1.0
+                  ActuatorType: Vibrate
+                - Index: 2
+                  Scalar: 1.0
+                  ActuatorType: Vibrate
+        - !Commands
+            device_index: 0
+            commands:
+              - !Write
+                  endpoint: tx
+                  data: [0x35, 0x12, 0x28, 0x14, 0x14, 0x97]
+                  write_with_response: false
+
+        # Stop again — back to all-zero, checksum reflects only magic+cmd.
+        - !Messages
+            device_index: 0
+            messages:
+              - !Stop
+        - !Commands
+            device_index: 0
+            commands:
+              - !Write
+                  endpoint: tx
+                  data: [0x35, 0x12, 0x00, 0x00, 0x00, 0x47]
+                  write_with_response: false

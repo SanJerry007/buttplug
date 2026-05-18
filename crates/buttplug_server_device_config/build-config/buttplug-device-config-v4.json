@@ -1,7 +1,7 @@
 {
   "version": {
     "major": 4,
-    "minor": 200
+    "minor": 201
   },
   "protocols": {
     "activejoy": {
@@ -23625,7 +23625,11 @@
           "btle": {
             "names": [
               "YCY-FJB-01",
-              "YCY-FJB-02"
+              "YCY-FJB-02",
+              "YCY-FJB-03",
+              "YS-TD-01",
+              "YS-TD-02",
+              "YS-TD-03"
             ],
             "services": {
               "0000ff40-0000-1000-8000-00805f9b34fb": {
@@ -23650,6 +23654,34 @@
             "YCY-FJB-02"
           ],
           "name": "Yiciyuan FJB-02"
+        },
+        {
+          "id": "825357dd-9ed1-4f0f-ab74-7885a2d1bac2",
+          "identifier": [
+            "YCY-FJB-03"
+          ],
+          "name": "Yiciyuan FJB-03"
+        },
+        {
+          "id": "62cf4850-d822-4ef2-af8b-6155fa28f8b8",
+          "identifier": [
+            "YS-TD-01"
+          ],
+          "name": "Yiciyuan YS-TD-01"
+        },
+        {
+          "id": "bc9664a9-6cc3-4d89-9ac6-df0d3ff750d7",
+          "identifier": [
+            "YS-TD-02"
+          ],
+          "name": "Yiciyuan YS-TD-02"
+        },
+        {
+          "id": "c85d1819-9ea6-44c6-bd23-65dcb2d0c6ef",
+          "identifier": [
+            "YS-TD-03"
+          ],
+          "name": "Yiciyuan YS-TD-03"
         }
       ],
       "defaults": {

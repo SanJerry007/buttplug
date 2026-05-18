@@ -38,12 +38,14 @@ defaults:
     index: 3
   id: d5987116-2fba-4c30-a7aa-ef567a3bf35d
 configurations:
-# YCY-FJB-01 is the only model verified against physical hardware so far.
-# YCY-FJB-02 is its successor in the same product line; the official app's
-# code path for both models is identical (same vuex state, same hex-stringed
-# 16-byte motor frame, same BLE service/characteristic UUIDs). Adding it
-# here so the second model is recognised; flag confirmed device behaviour
-# in a future PR once an FJB-02 owner can verify.
+# Family layout from app source (mixins/os_base.js + vuex_bt_os_* state):
+#   * YCY-FJB-01 / FJB-02 / YS-TD-01..03 — same 16-byte zero-padded frame
+#       [0x35, 0x12, stroke, vibe, axis_c, 0×11], levels clamped to 0..0x14.
+#   * YCY-FJB-03 — distinct: 6-byte frame [0x35, 0x12, stroke, vibe, axis_c,
+#       checksum], stroke range doubled to 0..0x28, vibe & axis_c still 0..0x14.
+# YCY-FJB-01 is the only model verified against physical hardware. Other
+# identifiers are added based on source-level evidence (shared mixin code +
+# matching vuex namespace) but await user verification.
 - identifier:
   - YCY-FJB-01
   name: Yiciyuan FJB-01
@@ -52,11 +54,31 @@ configurations:
   - YCY-FJB-02
   name: Yiciyuan FJB-02
   id: 48108f07-5871-445b-9f2a-10ceb1809b23
+- identifier:
+  - YCY-FJB-03
+  name: Yiciyuan FJB-03
+  id: 825357dd-9ed1-4f0f-ab74-7885a2d1bac2
+- identifier:
+  - YS-TD-01
+  name: Yiciyuan YS-TD-01
+  id: 62cf4850-d822-4ef2-af8b-6155fa28f8b8
+- identifier:
+  - YS-TD-02
+  name: Yiciyuan YS-TD-02
+  id: bc9664a9-6cc3-4d89-9ac6-df0d3ff750d7
+- identifier:
+  - YS-TD-03
+  name: Yiciyuan YS-TD-03
+  id: c85d1819-9ea6-44c6-bd23-65dcb2d0c6ef
 communication:
 - btle:
     names:
     - YCY-FJB-01
     - YCY-FJB-02
+    - YCY-FJB-03
+    - YS-TD-01
+    - YS-TD-02
+    - YS-TD-03
     services:
       0000ff40-0000-1000-8000-00805f9b34fb:
         tx: 0000ff41-0000-1000-8000-00805f9b34fb

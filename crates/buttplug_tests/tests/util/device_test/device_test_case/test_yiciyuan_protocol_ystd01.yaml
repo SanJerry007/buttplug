@@ -1,0 +1,57 @@
+devices:
+  - identifier:
+      name: "YS-TD-01"
+    expected_name: "Yiciyuan YS-TD-01"
+device_commands:
+  # YS-TD-0x is the "td" sub-family of the yiciyuan stroker line. The app
+  # routes it through a different vuex namespace (`bt_os_td`) but uses the
+  # same 16-byte zero-padded motor frame as FJB-01 / FJB-02. This test
+  # exercises one TD variant; the protocol path is identical for YS-TD-02
+  # and YS-TD-03.
+  - !VersionGated
+      min_spec_version: 3
+      commands:
+        - !Messages
+            device_index: 0
+            messages:
+              - !Stop
+        - !Commands
+            device_index: 0
+            commands:
+              - !Write
+                  endpoint: tx
+                  data: [0x35, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+                  write_with_response: false
+
+        - !Messages
+            device_index: 0
+            messages:
+              - !Scalar
+                - Index: 0
+                  Scalar: 0.5
+                  ActuatorType: Oscillate
+                - Index: 1
+                  Scalar: 0.75
+                  ActuatorType: Vibrate
+                - Index: 2
+                  Scalar: 0.25
+                  ActuatorType: Vibrate
+        - !Commands
+            device_index: 0
+            commands:
+              - !Write
+                  endpoint: tx
+                  data: [0x35, 0x12, 0x0A, 0x0F, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+                  write_with_response: false
+
+        - !Messages
+            device_index: 0
+            messages:
+              - !Stop
+        - !Commands
+            device_index: 0
+            commands:
+              - !Write
+                  endpoint: tx
+                  data: [0x35, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+                  write_with_response: false
